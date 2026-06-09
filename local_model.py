@@ -31,6 +31,8 @@ WAKE_THRESHOLD = 0.92
 
 COOLDOWN_SECONDS = 5
 
+SILENCE_TIMEOUT = 3
+
 last_activation = 0
 
 MAX_HISTORY = 20
@@ -276,6 +278,7 @@ def voice_session():
     transcript = []
 
     session_start = time.time()
+    last_speech_time = time.time()
 
     print("\nSession Started")
     print("Speak normally.")
@@ -303,6 +306,8 @@ def voice_session():
 
             if not text:
                 continue
+
+            last_speech_time = time.time()
 
             elapsed = (
                 time.time()
@@ -359,12 +364,25 @@ def voice_session():
                 and current_partial != last_partial
             ):
 
+                last_speech_time = time.time()
+
                 print(
                     f"\rListening: {current_partial}",
                     end=""
                 )
 
                 last_partial = current_partial
+
+        if (
+            time.time() - last_speech_time
+            > SILENCE_TIMEOUT
+        ):
+
+            print(
+                f"\n\n{SILENCE_TIMEOUT} seconds of silence detected."
+            )
+
+            break
 
     stream.stop_stream()
     stream.close()
