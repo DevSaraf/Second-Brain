@@ -6,10 +6,21 @@ import pyaudio
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from openwakeword.model import Model as WakeWordModel
 from vosk import Model, KaldiRecognizer
+from piper import PiperVoice
+import wave
+import winsound
 
 model = Model("vosk-model-small-en-us-0.15")
 wake_model = WakeWordModel()
 analyzer = SentimentIntensityAnalyzer()
+
+print("\nLoading Piper voice...")
+
+voice = PiperVoice.load(
+    "voices/en_US-amy-medium.onnx"
+)
+
+print("Piper loaded successfully.")
 
 RATE = 16000
 
@@ -45,6 +56,32 @@ stream = mic.open(
 )
 
 stream.start_stream()
+
+
+def speak(text):
+
+    try:
+
+        with wave.open(
+            "reply.wav",
+            "wb"
+        ) as wav_file:
+
+            voice.synthesize_wav(
+                text,
+                wav_file
+            )
+
+        winsound.PlaySound(
+            "reply.wav",
+            winsound.SND_FILENAME
+        )
+
+    except Exception as e:
+
+        print(
+            f"\nTTS Error: {e}"
+        )
 
 
 def detect_emotion(text):
@@ -86,12 +123,13 @@ def ask_qwen(prompt):
     system_prompt = {
         "role": "system",
         "content": f"""
-You are Qwen.
+You are Qwen, a voice assistant.
 
 Current user emotion: {emotion}
 
 Rules:
 
+- Keep replies short: 2 to 4 sentences. They are read aloud.
 - If emotion is happy, respond warmly and enthusiastically.
 - If emotion is sad, respond empathetically and supportively.
 - If emotion is neutral, respond normally.
@@ -108,12 +146,19 @@ Keep responses natural and conversational.
         response = requests.post(
             "http://127.0.0.1:8080/v1/chat/completions",
             json={
-                "messages": messages
+                "messages": messages,
+                "max_tokens": 200,
+                "temperature": 0.7
             },
-            timeout=60
+            timeout=120
         )
 
         answer = response.json()["choices"][0]["message"]["content"]
+
+    except requests.exceptions.ConnectionError:
+
+        print("\nCannot reach llama-server. Is it running on port 8080?")
+        return ""
 
     except requests.exceptions.Timeout:
 
@@ -367,9 +412,13 @@ while True:
     answer = ask_qwen(prompt)
 
     if answer:
-
         print("\nJarvis:")
         print(answer)
+
+        try:
+            speak(answer)
+        except Exception:
+            pass
 
     print(
         "\nReturning to wake mode..."
