@@ -1,7 +1,14 @@
 import requests
+import json
+import pyaudio
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from vosk import Model, KaldiRecognizer
 
+model = Model("vosk-model-small-en-us-0.15")
 analyzer = SentimentIntensityAnalyzer()
+
+MAX_HISTORY = 20
+
 
 def detect_emotion(text):
 
@@ -18,17 +25,89 @@ def detect_emotion(text):
     else:
         return "neutral"
 
+
+def listen(seconds=7):
+
+    recognizer = KaldiRecognizer(model, 16000)
+
+    mic = pyaudio.PyAudio()
+    stream = mic.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=16000,
+        input=True,
+        frames_per_buffer=8192
+    )
+    stream.start_stream()
+    print("Listening... (speak now)")
+
+    text = ""
+    for _ in range(int(16000 / 8192 * seconds)):
+        data = stream.read(8192, exception_on_overflow=False)
+        if recognizer.AcceptWaveform(data):
+            text += json.loads(recognizer.Result()).get("text", "") + " "
+
+    text += json.loads(recognizer.FinalResult()).get("text", "")
+
+    stream.stop_stream()
+    stream.close()
+    mic.terminate()
+
+    return text.strip()
+
+
 chat_history = []
 
-MAX_HISTORY = 20
+# mode = input("Choose mode (text/voice): ").strip().lower()
 
+
+# while True:
+
+#     if mode == "voice":
+#         prompt = listen()
+#         print("You said:", prompt)
+#         if not prompt:
+#             print("(heard nothing, try again)")
+#             continue
+#     else:
+#         prompt = input("\nUser: ")
+
+#     if prompt.lower() == "exit":
+#         break
 
 while True:
 
-    prompt = input("\nUser: ")
+    print("\nChoose Input Method")
+    print("1. Text")
+    print("2. Voice")
+    print("Type 'exit' to quit")
 
-    if prompt.lower() == "exit":
+    choice = input("\nEnter choice: ").strip().lower()
+
+    if choice == "exit":
         break
+
+    elif choice == "1":
+
+        prompt = input("\nUser: ")
+
+        if prompt.lower() == "exit":
+            break
+
+    elif choice == "2":
+
+        prompt = listen()
+
+        print("You said:", prompt)
+
+        if not prompt:
+            print("(heard nothing, try again)")
+            continue
+
+    else:
+
+        print("Invalid choice.")
+        continue
 
 
     emotion = detect_emotion(prompt)
