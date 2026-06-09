@@ -75,6 +75,26 @@ def wait_for_wake_word():
 
     global last_activation
 
+    wake_model.reset()
+
+    warmup_chunks = int(RATE / WAKE_CHUNK * 1.5)
+
+    for _ in range(warmup_chunks):
+
+        audio = stream.read(
+            WAKE_CHUNK,
+            exception_on_overflow=False
+        )
+
+        audio_np = np.frombuffer(
+            audio,
+            dtype=np.int16
+        )
+
+        wake_model.predict(
+            audio_np
+        )
+
     print("\nWaiting for wake word...")
     print("Say: Hey Jarvis\n")
 
