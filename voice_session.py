@@ -9,6 +9,20 @@ from vosk import KaldiRecognizer
 
 
 # --------------------------
+# CONFIG
+# --------------------------
+
+RATE = 16000
+WAKE_CHUNK = 1280
+VOSK_CHUNK = 4096
+
+WAKE_THRESHOLD = 0.92
+COOLDOWN_SECONDS = 5
+
+last_activation = 0
+
+
+# --------------------------
 # LOAD MODELS
 # --------------------------
 
@@ -16,28 +30,38 @@ print("Loading models...")
 
 wake_model = WakeWordModel()
 
+print("\nLoaded Wake Word Models:")
+
+for model_name in wake_model.models.keys():
+    print("-", model_name)
+
 vosk_model = VoskModel(
     "vosk-model-small-en-us-0.15"
 )
 
-print("Models loaded.\n")
+print("\nModels loaded.\n")
 
 
 # --------------------------
 # AUDIO CONFIG
 # --------------------------
 
-RATE = 16000
-CHUNK = 1280
-
 mic = pyaudio.PyAudio()
+
+info = mic.get_default_input_device_info()
+
+print("\nUsing microphone:")
+print(info["name"])
+
+print("\nDefault Sample Rate:")
+print(info["defaultSampleRate"])
 
 stream = mic.open(
     format=pyaudio.paInt16,
     channels=1,
     rate=RATE,
     input=True,
-    frames_per_buffer=CHUNK
+    frames_per_buffer=WAKE_CHUNK
 )
 
 stream.start_stream()
@@ -49,13 +73,17 @@ stream.start_stream()
 
 def wait_for_wake_word():
 
-    print("Waiting for wake word...")
+    global last_activation
+
+    print("\nWaiting for wake word...")
     print("Say: Hey Jarvis\n")
 
     while True:
 
+        current_time = time.time()
+
         audio = stream.read(
-            CHUNK,
+            WAKE_CHUNK,
             exception_on_overflow=False
         )
 
@@ -70,10 +98,28 @@ def wait_for_wake_word():
 
         for wakeword, score in prediction.items():
 
-            if score > 0.5:
+            # Debug score display
+            if score > 0.20:
 
                 print(
-                    f"\nWake Word Detected: {wakeword}"
+                    f"\r{wakeword}: {score:.2f}",
+                    end=""
+                )
+
+            if score > WAKE_THRESHOLD:
+
+                # Cooldown protection
+                if (
+                    current_time
+                    - last_activation
+                    < COOLDOWN_SECONDS
+                ):
+                    continue
+
+                last_activation = current_time
+
+                print(
+                    f"\n\nWake Word Detected: {wakeword}"
                 )
 
                 return
@@ -85,6 +131,21 @@ def wait_for_wake_word():
 
 def voice_session():
 
+    global stream
+
+    stream.stop_stream()
+    stream.close()
+
+    stream = mic.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=RATE,
+        input=True,
+        frames_per_buffer=VOSK_CHUNK
+    )
+
+    stream.start_stream()
+
     recognizer = KaldiRecognizer(
         vosk_model,
         RATE
@@ -95,54 +156,19 @@ def voice_session():
     session_start = time.time()
 
     print("\nSession Started")
-    print(
-        "Speak normally."
-    )
-    print(
-        "Say 'stop listening' to end.\n"
-    )
+    print("Speak normally.")
+    print("Say 'stop listening' to end.\n")
 
     last_partial = ""
 
     while True:
 
         data = stream.read(
-            CHUNK,
+            VOSK_CHUNK,
             exception_on_overflow=False
         )
 
-        # --------------------
-        # LIVE TRANSCRIPT
-        # --------------------
-
-        partial = json.loads(
-            recognizer.PartialResult()
-        )
-
-        current_partial = partial.get(
-            "partial",
-            ""
-        )
-
-        if (
-            current_partial
-            and current_partial != last_partial
-        ):
-
-            print(
-                f"\rListening: {current_partial}",
-                end=""
-            )
-
-            last_partial = current_partial
-
-        # --------------------
-        # FINAL TRANSCRIPT
-        # --------------------
-
-        if recognizer.AcceptWaveform(
-            data
-        ):
+        if recognizer.AcceptWaveform(data):
 
             result = json.loads(
                 recognizer.Result()
@@ -172,6 +198,10 @@ def voice_session():
                 f"\n[{elapsed:.1f}s] {text}"
             )
 
+            # ----------------
+            # STOP COMMAND
+            # ----------------
+
             if (
                 "stop listening"
                 in text.lower()
@@ -181,7 +211,51 @@ def voice_session():
                     "\nStop command detected."
                 )
 
+                # Flush microphone buffer
+                for _ in range(20):
+
+                    stream.read(
+                        VOSK_CHUNK,
+                        exception_on_overflow=False
+                    )
+
                 break
+
+        else:
+
+            partial = json.loads(
+                recognizer.PartialResult()
+            )
+
+            current_partial = partial.get(
+                "partial",
+                ""
+            )
+
+            if (
+                current_partial
+                and current_partial != last_partial
+            ):
+
+                print(
+                    f"\rListening: {current_partial}",
+                    end=""
+                )
+
+                last_partial = current_partial
+
+    stream.stop_stream()
+    stream.close()
+
+    stream = mic.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=RATE,
+        input=True,
+        frames_per_buffer=WAKE_CHUNK
+    )
+
+    stream.start_stream()
 
     return transcript
 
@@ -196,13 +270,8 @@ while True:
 
     transcript = voice_session()
 
-    print(
-        "\n\nSESSION TRANSCRIPT"
-    )
-
-    print(
-        "------------------------"
-    )
+    print("\n\nSESSION TRANSCRIPT")
+    print("------------------------")
 
     for entry in transcript:
 
@@ -216,10 +285,18 @@ while True:
 
         print()
 
+    print("------------------------")
+
     print(
-        "------------------------"
+        f"\nReturning to wake word mode..."
     )
 
     print(
-        "\nReturning to wake word mode...\n"
+        f"Cooldown: {COOLDOWN_SECONDS} seconds"
     )
+
+    time.sleep(
+        COOLDOWN_SECONDS
+    )
+
+    print()
