@@ -58,23 +58,6 @@ def listen(seconds=7):
 
 chat_history = []
 
-# mode = input("Choose mode (text/voice): ").strip().lower()
-
-
-# while True:
-
-#     if mode == "voice":
-#         prompt = listen()
-#         print("You said:", prompt)
-#         if not prompt:
-#             print("(heard nothing, try again)")
-#             continue
-#     else:
-#         prompt = input("\nUser: ")
-
-#     if prompt.lower() == "exit":
-#         break
-
 while True:
 
     print("\nChoose Input Method")
