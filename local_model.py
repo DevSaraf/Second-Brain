@@ -1,3 +1,4 @@
+# llama-server -m "/c/Users/saraf/.cache/huggingface/hub/models--Qwen--Qwen2.5-3B-Instruct-GGUF/blobs/8ab4be7ea643fe2b207cf286ce032ca4f5b592f4cebb0db6aa6533c0b26f218d" --host 127.0.0.1 --port 8080
 import requests
 import json
 import time
